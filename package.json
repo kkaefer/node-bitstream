@@ -1,0 +1,16 @@
+{
+    "name": "bitstream",
+    "version": "0.0.1",
+    "description": "Stream bits without aligning them to byte boundaries",
+    "author": "Konstantin Käfer <github@kkaefer.com>",
+
+    "main": "./bitstream",
+
+    "devDependencies": {
+        "mocha": "~1.0.3"
+    },
+
+    "scripts": {
+        "test": "mocha -R spec"
+    }
+}
