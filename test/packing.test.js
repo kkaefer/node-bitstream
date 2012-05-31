@@ -58,7 +58,7 @@ Assembler.prototype.end = function() {};
             bs.align(2);
             bs.addBits(new Buffer([ 0xFF ]), 5);
             bs.align();
-            bs.addBits(new Buffer([ 0xFF, 0xFF, 0xFF, 0XFF ]), 28);
+            bs.addBits(new Buffer([ 0xFF, 0xFF, 0xFF, 0xFF ]), 28);
             bs.align(8);
             bs.addBits(new Buffer([ 0xFF ]), 6);
             bs.align();
