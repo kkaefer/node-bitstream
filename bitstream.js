@@ -20,7 +20,7 @@ Bitstream.prototype.addByte = function(bits) {
         this._buffer[this._pos] |= bits << this._intra;
 
         // Copy second portion to next byte.
-        if (++this._pos == this._buffer.length) this._flush();
+        if (++this._pos == this._buffer.length) this.flush();
         this._buffer[this._pos] = (bits & 0xFF) >> (8 - this._intra);
     }
 
@@ -42,7 +42,7 @@ Bitstream.prototype._addBits = function(bits, length) {
         var current = 8 - this._intra;
         if (current < length) {
             // We also have to add bits to the second byte.
-            if (++this._pos == this._buffer.length) this._flush();
+            if (++this._pos == this._buffer.length) this.flush();
             this._buffer[this._pos] = bits >> current;
         }
     }
@@ -84,7 +84,7 @@ Bitstream.prototype.addBits = function(bits, length) {
         } else {
             // The new bits wouldn't fit into the current buffer anyway, so flush
             // and passthrough the new bits.
-            this._flush();
+            this.flush();
             this.emit('data', bits.slice(0, max));
         }
         this._total += max * 8;
@@ -103,7 +103,7 @@ Bitstream.prototype.addBits = function(bits, length) {
 
 Bitstream.prototype.end = function() {
     this.align();
-    this._flush();
+    this.flush();
     this.emit('end');
     delete this._buffer;
     delete this._pos;
@@ -126,7 +126,7 @@ Bitstream.prototype.align = function(boundary) {
 };
 
 // Flushes the current buffer.
-Bitstream.prototype._flush = function() {
+Bitstream.prototype.flush = function() {
     // Emit all valid whole bytes that have been written so far.
     this.emit('data', this._buffer.slice(0, this._pos));
 
