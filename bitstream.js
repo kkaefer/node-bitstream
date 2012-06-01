@@ -10,27 +10,46 @@ function Bitstream() {
 Bitstream.BUFFER_SIZE = 1024;
 
 
-// byte is a Number.
-Bitstream.prototype.addByte = function(bits) {
+
+/**
+ * Writes a byte to the bitstream
+ *
+ * @param bits {Number} Byte to write.
+ */
+Bitstream.prototype.writeByte = function(bits) {
+
     if (this._intra === 0) {
         // Aligned at byte boundary.
-        this._buffer[this._pos++] = bits;
+        this._buffer[this._pos] = bits;
+        this._pos++;
+        if (this._pos == this._buffer.length) this.flush();
     } else {
         // Copy first portion to current byte.
         this._buffer[this._pos] |= bits << this._intra;
+        this._pos++;
+        if (this._pos == this._buffer.length) this.flush();
 
         // Copy second portion to next byte.
-        if (++this._pos == this._buffer.length) this.flush();
         this._buffer[this._pos] = (bits & 0xFF) >> (8 - this._intra);
     }
 
     this._total += 8;
 };
 
-Bitstream.prototype._addBits = function(bits, length) {
+
+/**
+ * Writes an unsigned integer up to 8 bits to the bitstream
+ *
+ * @param number {Number} Number to write.
+ * @param length {Number} Amount of bits of the number to write.
+ */
+Bitstream.prototype.writeUnsigned = function(bits, length) {
+    if (length > 8) throw new Error('You need to specify an endianness when writing more than 8 bits');
+
     // Make sure we're not accidentally setting bits that shouldn't be set.
     bits &= (1 << length) - 1;
 
+    var current = 8 - this._intra;
     if (this._intra === 0) {
         // Aligned at byte boundary.
         this._buffer[this._pos] = bits;
@@ -38,32 +57,30 @@ Bitstream.prototype._addBits = function(bits, length) {
         // Number of bits we can fit into the current byte.
         // node's Buffer implementation clamps this to 0xFF.
         this._buffer[this._pos] |= bits << this._intra;
-
-        var current = 8 - this._intra;
-        if (current < length) {
-            // We also have to add bits to the second byte.
-            if (++this._pos == this._buffer.length) this.flush();
-            this._buffer[this._pos] = bits >> current;
-        }
     }
 
     this._total += length;
     this._intra += length;
-
     if (this._intra >= 8) {
         this._intra -= 8;
         this._pos++;
+        if (this._pos == this._buffer.length) this.flush();
+
+        if (current < length) {
+            // We also have to write bits to the second byte.
+            this._buffer[this._pos] = bits >> current;
+        }
     }
 };
 
 /**
- * Adds bits to the bitstream
+ * Writes bits to the bitstream
  *
- * @param bits {Buffer} Contains the bits to add, aligned at position 0.
+ * @param bits {Buffer} Contains the bits to write, aligned at position 0.
  *                      Bits are | 76543210 | FEDCBA98 | etc.
  * @param length {Number} Amount of valid bits in the buffer.
  */
-Bitstream.prototype.addBits = function(bits, length) {
+Bitstream.prototype.writeBits = function(bits, length) {
     if (!this._buffer) throw new Error('Stream is closed');
 
     var remainder = length % 8;
@@ -80,6 +97,7 @@ Bitstream.prototype.addBits = function(bits, length) {
             if (max > 0) {
                 bits.copy(this._buffer, this._pos, 0, max);
                 this._pos += max;
+                if (this._pos == this._buffer.length) this.flush();
             }
         } else {
             // The new bits wouldn't fit into the current buffer anyway, so flush
@@ -91,15 +109,58 @@ Bitstream.prototype.addBits = function(bits, length) {
     } else {
         // Do unaligned copy.
         for (var pos = 0; pos < max; pos++) {
-            this.addByte(bits[pos]);
+            this.writeByte(bits[pos]);
         }
     }
 
-    // Add last byte.
+    // Write last byte.
     if (remainder) {
-        this._addBits(bits[max], remainder);
+        this.writeUnsigned(bits[max], remainder);
     }
 };
+
+/**
+ * Writes an unsigned big endian integer with a specified length to the bitstream
+ *
+ * @param number {Number} Number to write.
+ * @param length {Number} Amount of bits of the number to write.
+ */
+Bitstream.prototype.writeUnsignedBE = function(number, length) {
+    if (!this._buffer) throw new Error('Stream is closed');
+
+    var remainder = length % 8;
+    var max = length - remainder;
+
+    if (remainder) {
+        this.writeUnsigned(number >>> max, remainder);
+    }
+
+    for (var pos = max - 8; pos >= 0; pos -= 8) {
+        this.writeByte(number >>> pos);
+    }
+};
+
+/**
+ * Writes an unsigned little endian integer with a specified length to the bitstream
+ *
+ * @param number {Number} Number to write.
+ * @param length {Number} Amount of bits of the number to write.
+ */
+Bitstream.prototype.writeUnsignedLE = function(number, length) {
+    if (!this._buffer) throw new Error('Stream is closed');
+
+    var remainder = length % 8;
+    var max = length - remainder;
+
+    for (var pos = 0; pos < max; pos += 8) {
+        this.writeByte(number >>> pos);
+    }
+
+    if (remainder) {
+        this.writeUnsigned(number >>> max, remainder);
+    }
+};
+
 
 Bitstream.prototype.end = function() {
     this.align();
@@ -109,7 +170,7 @@ Bitstream.prototype.end = function() {
     delete this._pos;
 };
 
-// Aligns to stream to the next byte boundary by adding zeros.
+// Aligns to stream to the next byte boundary by writing zeros.
 Bitstream.prototype.align = function(boundary) {
     if (typeof boundary == 'undefined' || boundary < 0 || !boundary) {
         boundary = 1;
@@ -121,7 +182,7 @@ Bitstream.prototype.align = function(boundary) {
 
     var valid = this._total % (boundary * 8);
     if (valid > 0) {
-        this.addBits(Bitstream._nulls, boundary * 8 - valid);
+        this.writeBits(Bitstream._nulls, boundary * 8 - valid);
     }
 };
 
@@ -140,7 +201,7 @@ Bitstream.prototype.flush = function() {
 // Stream API
 // Emit 'data', 'end', 'close', 'error'
 Bitstream.prototype.readable = true;
-Bitstream.prototype.writable = false; // We don't support being piped into; just adding bits with .add()
+Bitstream.prototype.writable = false; // We don't support being piped into; just writing bits with .writeBits()
 
 Bitstream._nulls = new Buffer(32);
 Bitstream._nulls.fill(0);
