@@ -161,6 +161,12 @@ Bitstream.prototype.writeUnsignedLE = function(number, length) {
     }
 };
 
+Bitstream.prototype.writeUnsignedReversed = function(number, length) {
+    for (var shift = length - 1; shift >= 0; shift--) {
+        this.writeUnsigned(number >> shift, 1);
+    }
+};
+
 
 Bitstream.prototype.end = function() {
     this.align();
